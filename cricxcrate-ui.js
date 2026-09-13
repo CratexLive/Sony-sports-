@@ -1,19 +1,22 @@
-window.CricConfig = {
-  telegramLink: "https://t.me/+xSqMXDXp78ZiOWQ1",
-  previewDuration: 10000
-};
-
 class CricXCrateUI extends HTMLElement {
   constructor() {
     super();
     this._shadow = this.attachShadow({ mode: 'closed' });
     this.SENSITIVITY = 2.5;
 
-    // Stream URL sourced from attribute or default configuration
-    const configuredUrl = this.getAttribute('stream-url') || "https://sony.freeshow.fun/";
-    
+    const domain = window.CricConfig?.domain || "sony.freeshow.fun";
+
     this.masterChannels = [
-      { id: "sony-sports-master", title: "Sony Sports Master Feed", url: configuredUrl }
+      { id: "sony-sports-1-hd", title: "Sony Sports 1 HD", url: `https://${domain}/?id=sony-sports-1-hd` },
+      { id: "sony-sports-2-hd", title: "Sony Sports 2 HD", url: `https://${domain}/?id=sony-sports-2-hd` },
+      { id: "sony-sports-3-hd", title: "Sony Sports 3 HD", url: `https://${domain}/?id=sony-sports-3-hd` },
+      { id: "sony-sports-5-hd", title: "Sony Sports 5 HD", url: `https://${domain}/?id=sony-sports-5-hd` },
+      { id: "sony-sports-1", title: "Sony Sports 1", url: `https://${domain}/?id=sony-sports-1` },
+      { id: "sony-sports-2", title: "Sony Sports 2", url: `https://${domain}/?id=sony-sports-2` },
+      { id: "sony-sports-3", title: "Sony Sports 3", url: `https://${domain}/?id=sony-sports-3` },
+      { id: "sony-sports-4-tam", title: "Sony Sports 4 Tamil", url: `https://${domain}/?id=sony-sports-4-tam` },
+      { id: "sony-sports-4-tel", title: "Sony Sports 4 Telugu", url: `https://${domain}/?id=sony-sports-4-tel` },
+      { id: "sony-sports-5", title: "Sony Sports 5", url: `https://${domain}/?id=sony-sports-5` }
     ];
 
     this.isStreamUnlocked = false;
@@ -85,6 +88,18 @@ class CricXCrateUI extends HTMLElement {
         .mode-toggle-btn i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; transition: all 0.3s ease; }
         .mode-toggle-btn.active { background: var(--accent); color: #fff; box-shadow: 0 0 15px var(--accent-glow); }
         .mode-toggle-btn.active i { background: #fff; }
+
+        .controls-header-bar { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+        .channel-search-input { width: 100%; max-width: 320px; background: var(--bg-card); border: 1px solid var(--border-glass-bright); color: var(--text-main); padding: 8px 16px; border-radius: 100px; font-family: 'Manrope', sans-serif; font-size: clamp(11px, 0.8vw, 13px); outline: none; backdrop-filter: blur(12px); transition: all 0.3s ease; }
+        .channel-search-input:focus { border-color: var(--accent); box-shadow: 0 0 15px var(--accent-glow); }
+
+        .channel-selector-bar { display: flex; gap: 10px; overflow-x: auto; padding: 6px 0 16px 0; white-space: nowrap; scrollbar-width: thin; scrollbar-color: var(--accent) var(--bg-card); }
+        .channel-selector-bar::-webkit-scrollbar { height: 4px; }
+        .channel-selector-bar::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 4px; }
+        
+        .channel-btn { background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-glass); padding: 8px 18px; border-radius: 100px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: clamp(11px, 0.8vw, 13px); font-weight: 700; letter-spacing: 0.5px; backdrop-filter: blur(12px); transition: all 0.3s ease; flex-shrink: 0; }
+        .channel-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+        .channel-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 18px var(--accent-glow); }
 
         .hero { position: relative; padding: clamp(10px, 2vw, 30px) 0 clamp(10px, 1.5vw, 20px); }
         .hero-tag { display: inline-flex; align-items: center; gap: 10px; font-family: 'Space Grotesk', sans-serif; color: var(--accent); font-size: clamp(12px, 1.1vw, 15px); font-weight: 800; letter-spacing: 3px; text-transform: uppercase; }
@@ -166,6 +181,11 @@ class CricXCrateUI extends HTMLElement {
           <h1 class="hero-headline">SONY SPORTS <br><span class="accent-txt">CHANNELS.</span></h1>
         </section>
 
+        <div class="controls-header-bar">
+          <input type="text" class="channel-search-input" id="channelSearchInput" placeholder="Search Sony channels...">
+          <div class="channel-selector-bar" id="channelSelector"></div>
+        </div>
+
         <main class="broadcast">
           <div class="track-separator-beam"></div>
 
@@ -222,14 +242,25 @@ class CricXCrateUI extends HTMLElement {
   }
 
   connectedCallback() {
+    this.renderChannelButtons(this.masterChannels);
     this.initWarpField();
     this.initThemeSwitching();
     this.initEventListeners();
 
     window.addEventListener('message', this.msgHandler);
 
-    // Initialize with the configured master channel
-    this.switchChannel(this.masterChannels[0], false);
+    const params = new URLSearchParams(window.location.search);
+    const urlId = params.get('id');
+    if (urlId) {
+      const found = this.masterChannels.find(ch => ch.id === urlId);
+      if (found) {
+        this.switchChannel(found, false);
+      } else {
+        this.switchChannel(this.masterChannels[0], false);
+      }
+    } else {
+      this.switchChannel(this.masterChannels[0], false);
+    }
 
     setTimeout(() => {
       this.showTelegramPopup();
@@ -258,10 +289,60 @@ class CricXCrateUI extends HTMLElement {
     }
   }
 
-  switchChannel(channel) {
+  renderChannelButtons(channelsList) {
+    const selector = this._shadow.getElementById('channelSelector');
+    selector.innerHTML = '';
+
+    if (!channelsList || channelsList.length === 0) {
+      selector.innerHTML = '<span style="color:var(--text-muted); font-size:12px; padding:10px;">No matching channels found.</span>';
+      return;
+    }
+
+    channelsList.forEach((channel) => {
+      const btn = document.createElement('button');
+      btn.className = 'channel-btn';
+      btn.innerText = channel.title;
+      btn.onclick = () => {
+        this.switchChannel(channel, true);
+      };
+      selector.appendChild(btn);
+    });
+
+    const currentTitle = this._shadow.getElementById('currentChannelTitle').textContent.split(' · ')[0];
+    this._shadow.querySelectorAll('.channel-btn').forEach((b) => {
+      if (b.innerText === currentTitle) {
+        b.classList.add('active');
+      }
+    });
+  }
+
+  switchChannel(channel, pushHistory = true) {
+    this._shadow.querySelectorAll('.channel-btn').forEach((b) => {
+      if (b.innerText === channel.title) {
+        b.classList.add('active');
+      } else {
+        b.classList.remove('active');
+      }
+    });
+
     this._shadow.getElementById('currentChannelTitle').textContent = channel.title + ' · Live Broadcast';
+
     const iframe = this._shadow.getElementById('player');
     iframe.src = channel.url;
+
+    if (pushHistory) {
+      const query = `?id=${channel.id}`;
+      if (window.location.search !== query) {
+        try {
+          history.pushState({ playerOpen: true, id: channel.id }, '', query);
+        } catch (e) {}
+      }
+
+      this.channelSwitchCount++;
+      if (this.channelSwitchCount % 10 === 0) {
+        this.showTelegramPopup();
+      }
+    }
   }
 
   triggerLock() {
@@ -270,21 +351,21 @@ class CricXCrateUI extends HTMLElement {
     this.showTelegramPopup();
   }
 
-  unlockStream() {
-    localStorage.setItem('cricxcrate_unlocked_time', Date.now().toString());
-    this.isStreamUnlocked = true;
-    this.hideTelegramPopup();
-    window.open(window.CricConfig.telegramLink, '_blank', 'noopener');
-  }
-
   initEventListeners() {
     const btnShare = this._shadow.getElementById("btnShare");
     const shareBtnText = this._shadow.getElementById("shareBtnText");
     const joinModalBtn = this._shadow.getElementById("tgJoinModalBtn");
     const joinedBtn = this._shadow.getElementById("tgJoinedBtn");
+    const searchInput = this._shadow.getElementById("channelSearchInput");
 
     joinModalBtn.addEventListener("click", () => this.hideTelegramPopup());
     joinedBtn.addEventListener("click", () => this.hideTelegramPopup());
+
+    searchInput.addEventListener("input", (e) => {
+      const keyword = e.target.value.toLowerCase().trim();
+      const filtered = this.masterChannels.filter(ch => ch.title.toLowerCase().includes(keyword));
+      this.renderChannelButtons(filtered);
+    });
 
     btnShare.addEventListener("click", async () => {
       const shareData = {
